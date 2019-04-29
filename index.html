@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<!-- /*
+ * This file is part of the Resolume XML Parser project
+ * Copyright (c) 2018 Bitfocus AS
+ * Authors: William Viker <william@bitfocus.io>, Håkon Nessjøen <haakon@bitfocus.io>
+ *
+ * This program is free software.
+ * You should have received a copy of the MIT licence as well as the Bitfocus
+ * Individual Contributor License Agreement for companion along with
+ * this program.
+ *
+ * You can be released from the requirements of the license by purchasing
+ * a commercial license. Buying such a license is mandatory as soon as you
+ * develop commercial activities involving the Companion software without
+ * disclosing the source code of your own applications.
+ *
+ */ -->
+<html lang="en">
+<head>
+	<title>Bitfocus Resolume Parser</title>
+	<style>
+		body {
+			font-family: Helvetica;
+			color: white;
+			background-color: #111;
+		}
+	</style>
+</head>
+<body>
+	<h1>Resolume XML Parser</h1>
+	<input type='file' accept='text/xml' onchange='openFile(event)'><br>
+	<img id='output'>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.4.0/jquery.min.js"></script>
+	<script>
+
+		var colors = [
+			'ff00ff',
+			'ffff00',
+			'00ffff',
+			'ff0000',
+			'ff5800',
+			'00d200',
+			'6762ff',
+			'db59ff',
+			'939393'
+		];
+
+		var openFile = function(event) {
+			var input = event.target;
+			var reader = new FileReader();
+
+			reader.onload = function() {
+
+				var text = reader.result;
+				var parser = new DOMParser();
+				var xml = parser.parseFromString(reader.result, "text/xml");
+				var $xml = $($.parseXML(reader.result));
+
+				var $b = $("body");
+
+				var $screens = $xml.find('screens');
+
+				$screens.find('Screen').each(function() {
+					var $screen = this;
+					// Screen info
+					var screen_name = $(this).attr('name');
+
+					console.log("------- SCREEN: "+ screen_name + " --------")
+
+					var $output = $(this).find('OutputDeviceVirtual').first();
+					var output_width = $output.attr('width');
+					var output_height = $output.attr('height');
+					$b.append($("<h1>" + screen_name + " (" + output_width + "x" + output_height + ")</h1>"));
+
+					// Slices
+					var $layers = $(this).find('layers');
+					var current_color = 0;
+
+					var $canvas = $('<canvas style="border:1px solid #000000;background-color:#000;border: 1px dotted white"></canvas>');
+					$canvas.attr("height", output_height);
+					$canvas.attr("width", output_width);
+
+					var ctx = $canvas[0].getContext("2d");
+
+					ctx.translate(.5,.5);
+
+					$layers.find('Slice').each(function() {
+						var slice_name = $(this).find('Param[name="Name"]').attr('value');
+
+						ctx.beginPath();
+
+						var color = "#" + colors[current_color % 8];
+
+						var coords = [];
+
+						$(this).find('OutputRect v').each(function() {
+							coords.push( [ parseInt($(this).attr('x')),  parseInt($(this).attr('y')) ] );
+						});
+
+						console.log("XX XX", slice_name, color);
+
+						var posmin = [Infinity, Infinity];
+						var posmax = [0, 0];
+
+						for (var pos = 0; pos < coords.length; pos++) {
+							if (posmin[0] > coords[pos][0]) { posmin[0] = coords[pos][0]; }
+							if (posmin[1] > coords[pos][1]) { posmin[1] = coords[pos][1]; }
+							if (posmax[0] < coords[pos][0]) { posmax[0] = coords[pos][0] - 1; }
+							if (posmax[1] < coords[pos][1]) { posmax[1] = coords[pos][1] - 1; }
+						}
+
+						var pwidth = (posmax[0] - posmin[0]) + 1;
+						var pheight = (posmax[1] - posmin[1]) + 1;
+						var pos_x = posmin[0] + (pwidth / 2);
+						var pos_y = posmin[1] + (pheight / 2);
+
+						console.log(slice_name, "POSMIN", posmin, "POSMAX", posmax, pos_x, pos_y);
+
+						ctx.fillStyle = color;
+						ctx.textAlign = "center";
+						ctx.font = "18px Helvetica";
+						ctx.fillText(slice_name, pos_x, pos_y);
+						ctx.font = "14px Helvetica";
+						ctx.fillText(posmin[0]+" , "+posmin[1]+" // " + pwidth + " x " + pheight, pos_x, pos_y+20);
+
+						if (coords.length == 4) {
+							ctx.moveTo(coords[0][0], coords[0][1]);
+							ctx.lineTo(coords[1][0] - 1, coords[1][1]);
+							ctx.lineTo(coords[2][0] - 1, coords[2][1] - 1);
+							ctx.lineTo(coords[3][0], coords[3][1] - 1);
+							ctx.lineTo(coords[0][0], coords[0][1]);
+							ctx.lineWidth = 0.3;
+							ctx.moveTo(posmin[0], posmin[1]);
+							ctx.lineTo(posmax[0], posmax[1]);
+							ctx.moveTo(posmax[0], posmin[1]);
+							ctx.lineTo(posmin[0], posmax[1]);
+							ctx.stroke();
+							ctx.strokeStyle = color;
+							ctx.lineWidth = 1;
+							ctx.stroke();
+
+						}
+
+						current_color++;
+
+					});
+
+					$canvas.click(function() {
+						console.log("onlog");
+						download($canvas[0], 'myimage.png');
+					});
+
+					$b.append($canvas);
+				});
+
+
+			};
+
+			reader.readAsText(input.files[0]);
+
+		};
+
+		function download(canvas, filename) {
+			var lnk = document.createElement('a'), e;
+			lnk.download = filename;
+			lnk.href = canvas.toDataURL("image/png;base64");
+			if (document.createEvent) {
+				e = document.createEvent("MouseEvents");
+				e.initMouseEvent("click", true, true, window, 0, 0, 0, 0, 0, false, false, false, false, 0, null);
+				lnk.dispatchEvent(e);
+			}
+			else if (lnk.fireEvent) {
+				lnk.fireEvent("onclick");
+			}
+		}
+
+
+	</script>
+
+
+
+</body>
+</html>
